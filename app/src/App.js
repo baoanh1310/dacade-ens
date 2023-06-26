@@ -130,6 +130,7 @@ const App = () => {
 					value={domain}
 					placeholder='domain'
 					onChange={e => setDomain(e.target.value)}
+					disabled={editing}
 					/>
 					<p className='tld'> {tld} </p>
 				</div>
@@ -251,22 +252,27 @@ const App = () => {
 					<p className="subtitle"> Recently minted domains!</p>
 					<div className="mint-list">
 					{ mints.map((mint, index) => {
-						return (
-							<div className="mint-item" key={index}>
-								<div className='mint-row'>
-								<a className="link" href={`https://testnets.opensea.io/assets/mumbai/${CONTRACT_ADDRESS}/${mint.id}`} target="_blank" rel="noopener noreferrer">
-									<p className="underlined">{' '}{mint.name}{tld}{' '}</p>
-								</a>
-								{ mint.owner.toLowerCase() === currentAccount.toLowerCase() ?
-									<button className="edit-button" onClick={() => editRecord(mint.name)}>
-									<img className="edit-icon" src="https://img.icons8.com/metro/26/000000/pencil.png" alt="Edit button" />
-									</button>
-									:
-									null
-								}
-							</div>
-							<p> {mint.record} </p>
-						</div>)
+						console.log("mint: ", mint);
+						if (mint.owner.toLowerCase() === currentAccount.toLowerCase()) {
+							return (
+								<div className="mint-item" key={index}>
+									<div className='mint-row'>
+										<button className="edit-button" onClick={() => editRecord(mint.name)}>
+											<img className="edit-icon" src="https://img.icons8.com/metro/26/000000/pencil.png" alt="Edit button" />
+										</button>
+									</div>
+									<div className='mint-row'>
+										<p className="underlined">{' '}{mint.name}{tld}{' '}</p>
+									</div>
+									<div className='mint-row'>
+										<p> {mint.record} </p>
+									</div>
+							</div>)
+						} else {
+							return (
+								<div></div>
+							)
+						}
 					})}
 					</div>
 				</div>
