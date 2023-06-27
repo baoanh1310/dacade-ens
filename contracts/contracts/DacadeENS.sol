@@ -46,12 +46,35 @@ contract DacadeENS is ERC721URIStorage {
     }
   }
 
+  uint256 private constant ONE_YEAR_IN_SECONDS = 365 days;
+
+  mapping(string => uint256) private domainExpiration;
+
+  // Function to set the expiration date for a domain
+  function setDomainExpiration(string calldata name, uint256 expirationDate) public {
+    require(domains[name] == msg.sender, "Only the domain owner can set the expiration date");
+
+    domainExpiration[name] = expirationDate;
+  }
+
+  // Function to check if a domain is expired
+  function isDomainExpired(string calldata name) public view returns (bool) {
+    uint256 expirationDate = domainExpiration[name];
+    if (expirationDate == 0) {
+      // Domain expiration date not set
+      return false;
+    }
+    return block.timestamp > expirationDate;
+  }
+
+
   function register(string calldata name) public payable {
+    require(bytes(name).length > 0, "Name cannot be empty");\
+    require(msg.value >= price(name), "Not enough CELO");
     if (domains[name] != address(0)) revert AlreadyRegistered();
     if (!valid(name)) revert InvalidName(name);
 
     uint256 _price = price(name);
-    require(msg.value >= _price, "Not enough CELO");
     
     string memory _name = string(abi.encodePacked(name, ".", tld));
     string memory finalSvg = string(abi.encodePacked(svgPartOne, _name, svgPartTwo));
@@ -78,6 +101,8 @@ contract DacadeENS is ERC721URIStorage {
     domains[name] = msg.sender;
     names[newRecordId] = name;
     _tokenIds.increment();
+    uint256 expirationDate = block.timestamp + ONE_YEAR_IN_SECONDS;
+    domainExpiration[name] = expirationDate;
   }
 
   function getAddress(string calldata name) public view returns (address) {
@@ -85,7 +110,12 @@ contract DacadeENS is ERC721URIStorage {
   }
 
   function setRecord(string calldata name, string calldata record) public {
-      if (msg.sender != domains[name]) revert Unauthorized();
+      address domainOwner = domains[name];
+      require(domainOwner != address(0), "Domain does not exist");
+      require(domainOwner == msg.sender, "Only the domain owner can set the record");
+      if (isDomainExpired(name)) {
+      domainExpiration[name] = block.timestamp + ONE_YEAR_IN_SECONDS;
+      }
       records[name] = record;
   }
 
@@ -121,4 +151,14 @@ contract DacadeENS is ERC721URIStorage {
     (bool success, ) = msg.sender.call{value: amount}("");
     require(success, "Failed to withdraw CELO");
   } 
+
+  function transferDomainOwnership(string calldata name, address newOwner) public {
+    require(domains[name] == msg.sender, "Only the domain owner can transfer ownership");
+    require(newOwner != address(0), "Invalid new owner address");
+
+    domains[name] = newOwner;
+  }
+
+
+
 }
