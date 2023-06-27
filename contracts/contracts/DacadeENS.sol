@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.10;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
 import { StringUtils } from "./libraries/StringUtils.sol";
 import {Base64} from "./libraries/Base64.sol";
 
-contract DacadeENS is ERC721URIStorage {
+contract DacadeENS is ERC721URIStorage, Ownable {
 
   using Counters for Counters.Counter;
   Counters.Counter private _tokenIds;
@@ -23,102 +24,98 @@ contract DacadeENS is ERC721URIStorage {
 
   mapping (uint => string) public names;
 
-  address payable public owner;
+  event DomainRegistered(address indexed owner, string indexed domain);
+  event RecordSet(string indexed domain, string record);
 
   error Unauthorized();
   error AlreadyRegistered();
   error InvalidName(string name);
 
-  constructor(string memory _tld) ERC721 ("Dacade Name Service", "DNS") payable {
-    owner = payable(msg.sender);
-    tld = _tld;
-  }
-
-  function price(string calldata name) public pure returns(uint) {
-    uint len = StringUtils.strlen(name);
-    require(len > 0);
-    if (len == 3) {
-      return 5 * 10**17; // 0.5 CELO
-    } else if (len == 4) {
-      return 3 * 10**17; // 0.3 CELO
-    } else {
-      return 1 * 10**17; // 0.1 CELO
+    constructor(string memory _tld) ERC721 ("Dacade Name Service", "DNS") payable {
+      tld = _tld;
     }
-  }
 
-  function register(string calldata name) public payable {
-    if (domains[name] != address(0)) revert AlreadyRegistered();
-    if (!valid(name)) revert InvalidName(name);
+     function price(string calldata name) public pure returns (uint) {
+        uint len = StringUtils.strlen(name);
+        require(len > 0, "Invalid name");
+        if (len == 3) {
+            return 5 * 10**17; // 0.5 CELO
+        } else if (len == 4) {
+            return 3 * 10**17; // 0.3 CELO
+        } else if (len >= 5 && len <= 10) {
+            return 1 * 10**17; // 0.1 CELO
+        } else {
+            revert InvalidName(name);
+        }
+    }
 
-    uint256 _price = price(name);
-    require(msg.value >= _price, "Not enough CELO");
-    
-    string memory _name = string(abi.encodePacked(name, ".", tld));
-    string memory finalSvg = string(abi.encodePacked(svgPartOne, _name, svgPartTwo));
-    uint256 newRecordId = _tokenIds.current();
-    uint256 length = StringUtils.strlen(name);
-    string memory strLen = Strings.toString(length);
+    function register(string calldata name) public payable returns (bool) {
+        if (domains[name] != address(0)) revert AlreadyRegistered();
+        if (!valid(name)) revert InvalidName(name);
 
-    string memory json = Base64.encode(
-      abi.encodePacked(
-        '{"name": "',
-        _name,
-        '", "description": "A domain on the Dacade Name Service", "image": "data:image/svg+xml;base64,',
-        Base64.encode(bytes(finalSvg)),
-        '","length":"',
-        strLen,
-        '"}'
-      )
-    );
+        uint256 _price = price(name);
+        require(msg.value >= _price, "Not enough CELO");
 
-    string memory finalTokenUri = string( abi.encodePacked("data:application/json;base64,", json));
+        string memory _name = string(abi.encodePacked(name, ".", tld));
+        string memory finalSvg = string(abi.encodePacked(svgPartOne, _name, svgPartTwo));
+        uint256 newRecordId = _tokenIds.current();
+        uint256 length = StringUtils.strlen(name);
+        string memory strLen = Strings.toString(length);
 
-    _safeMint(msg.sender, newRecordId);
-    _setTokenURI(newRecordId, finalTokenUri);
-    domains[name] = msg.sender;
-    names[newRecordId] = name;
-    _tokenIds.increment();
-  }
+        string memory json = Base64.encode(
+          abi.encodePacked(
+            '{"name": "',
+            _name,
+            '", "description": "A domain on the Dacade Name Service", "image": "data:image/svg+xml;base64,',
+            Base64.encode(bytes(finalSvg)),
+            '","length":"',
+            strLen,
+            '"}'
+          )
+        );
 
-  function getAddress(string calldata name) public view returns (address) {
+        string memory finalTokenUri = string( abi.encodePacked("data:application/json;base64,", json));
+
+        _safeMint(msg.sender, newRecordId);
+        _setTokenURI(newRecordId, finalTokenUri);
+        domains[name] = msg.sender;
+        names[newRecordId] = name;
+        _tokenIds.increment();
+        emit DomainRegistered(msg.sender, name);
+        return true;
+    }
+
+    function getAddress(string calldata name) public view returns (address) {
       return domains[name];
-  }
+    }
 
-  function setRecord(string calldata name, string calldata record) public {
+    function setRecord(string calldata name, string calldata record) public {
       if (msg.sender != domains[name]) revert Unauthorized();
       records[name] = record;
-  }
-
-  function getRecord(string calldata name) public view returns(string memory) {
-      return records[name];
-  }
-
-  function getAllNames() public view returns (string[] memory) {
-    string[] memory allNames = new string[](_tokenIds.current());
-    for (uint i = 0; i < _tokenIds.current(); i++) {
-      allNames[i] = names[i];
+      emit RecordSet(name, record);
     }
 
-    return allNames;
-  }
+    function getRecord(string calldata name) public view returns(string memory) {
+      return records[name];
+    }
 
-  function valid(string calldata name) public pure returns(bool) {
-    return StringUtils.strlen(name) >= 3 && StringUtils.strlen(name) <= 10;
-  }
+    function getAllNames() public view returns (string[] memory) {
+        string[] memory allNames = new string[](_tokenIds.current());
+        for (uint i = 0; i < _tokenIds.current(); i++) {
+          allNames[i] = names[i];
+        }
 
-  modifier onlyOwner() {
-    require(isOwner());
-    _;
-  }
+        return allNames;
+    }
 
-  function isOwner() public view returns (bool) {
-    return msg.sender == owner;
-  }
-
-  function withdraw() public onlyOwner {
-    uint amount = address(this).balance;
-    
-    (bool success, ) = msg.sender.call{value: amount}("");
-    require(success, "Failed to withdraw CELO");
-  } 
+    function valid(string calldata name) public pure returns(bool) {
+      return StringUtils.strlen(name) >= 3 && StringUtils.strlen(name) <= 10;
+    }
+  
+    function withdraw() public onlyOwner {
+      uint amount = address(this).balance;
+      
+      (bool success, ) = msg.sender.call{value: amount}("");
+      require(success, "Failed to withdraw CELO");
+    } 
 }
